@@ -236,6 +236,11 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('gameReset');
     });
 
+    socket.on('sendEmote', ({ roomId, emoji }) => {
+        // Просто пересилаємо всім: "Гравець X відправив смайл Y"
+        io.to(roomId).emit('emoteReceived', { playerId: socket.id, emoji });
+    });
+
     socket.on('disconnect', () => { });
 });
 
