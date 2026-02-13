@@ -20,8 +20,17 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
         socket.on('gameOver', ({ winnerId }) => {
             setWinnerId(winnerId);
         });
+
+        // НОВЕ: Слухаємо скидання гри
+        socket.on('gameReset', () => {
+            setWinnerId(null);       // Прибираємо вікно перемоги
+            setPendingWall(null);    // Скидаємо режими
+            setMode('move');
+        });
+
         return () => {
             socket.off('gameOver');
+            socket.off('gameReset'); // Не забуваємо відписатись
         };
     }, [socket]);
 
@@ -114,6 +123,9 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
 
     const leaveGame = () => window.location.reload();
 
+    const handleRematch = () => {
+        socket.emit('resetGame', { roomId });
+    };
     if (!gameState) return <div className="text-white text-center mt-20">Завантаження...</div>;
 
     const isMyTurn = gameState.turn === myPlayerId;
@@ -130,6 +142,7 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
             {winnerId && (
                 <div className="absolute inset-0 z-50 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-slate-800 border border-slate-700 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center">
+
                         <div className="flex justify-center mb-6">
                             {iWon ? (
                                 <div className="p-6 bg-yellow-500/20 rounded-full animate-bounce"><Trophy size={64} className="text-yellow-400" /></div>
@@ -137,8 +150,29 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
                                 <div className="p-6 bg-slate-700/50 rounded-full"><Frown size={64} className="text-slate-400" /></div>
                             )}
                         </div>
-                        <h2 className={clsx("text-3xl font-bold mb-2", iWon ? "text-yellow-400" : "text-slate-200")}>{iWon ? "ТИ ПЕРЕМІГ!" : "Поразка"}</h2>
-                        <button onClick={leaveGame} className={clsx("w-full py-4 rounded-xl font-bold text-lg shadow-lg mt-6", iWon ? "bg-yellow-500 hover:bg-yellow-400 text-black" : "bg-slate-700 hover:bg-slate-600 text-white")}>В Головне Меню</button>
+
+                        <h2 className={clsx("text-3xl font-bold mb-2", iWon ? "text-yellow-400" : "text-slate-200")}>
+                            {iWon ? "ТИ ПЕРЕМІГ!" : "Поразка"}
+                        </h2>
+
+                        <div className="flex flex-col gap-3 mt-8">
+                            {/* Кнопка РЕВАНШ */}
+                            <button
+                                onClick={handleRematch}
+                                className="w-full py-4 rounded-xl font-bold text-lg shadow-lg bg-green-600 hover:bg-green-500 text-white flex items-center justify-center gap-2 transition-transform active:scale-95"
+                            >
+                                <RotateCw size={20} /> Зіграти ще раз
+                            </button>
+
+                            {/* Кнопка ВИХІД */}
+                            <button
+                                onClick={leaveGame}
+                                className="w-full py-4 rounded-xl font-bold text-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                            >
+                                Вийти в меню
+                            </button>
+                        </div>
+
                     </div>
                 </div>
             )}

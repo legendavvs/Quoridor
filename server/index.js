@@ -185,6 +185,34 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('gameUpdate', state);
     });
 
+
+    socket.on('resetGame', ({ roomId }) => {
+        const room = clientRooms[roomId];
+        if (!room) return;
+
+        // Скидаємо стан гри до початкового
+        room.gameState.p1.x = 4;
+        room.gameState.p1.y = 0;
+        room.gameState.p1.walls = 10;
+
+        if (room.gameState.p2) {
+            room.gameState.p2.x = 4;
+            room.gameState.p2.y = 8;
+            room.gameState.p2.walls = 10;
+        }
+
+        room.gameState.walls = []; // Очищаємо стінки
+
+        // Можна міняти чергу (хто виграв - той ходить другим), 
+        // або просто завжди починає P1 (створювач). Залишимо P1 для простоти.
+        room.gameState.turn = room.players[0];
+
+        // Відправляємо всім оновлення
+        io.to(roomId).emit('gameUpdate', room.gameState);
+
+        // Спеціальна подія, щоб клієнт прибрав вікно перемоги
+        io.to(roomId).emit('gameReset');
+    });
     socket.on('disconnect', () => { });
 });
 
