@@ -4,9 +4,7 @@ A real-time multiplayer implementation of the classic strategy board game **Quor
 
 🔗 **Demo:** [Insert your Vercel link here]
 
-![Game Screenshot](<img width="550" height="779" alt="image" src="https://github.com/user-attachments/assets/b4db6b73-d29d-4991-a5f5-9425aa535d41" />
-)
-
+[Game Screenshot]<img src="https://github.com/user-attachments/assets/dca9d108-5659-4e2b-a367-e0e0039c5960" width="300" />
 ---
 
 ## ✨ Features
