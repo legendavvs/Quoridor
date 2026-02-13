@@ -109,28 +109,64 @@ io.on('connection', (socket) => {
 
     socket.on('movePiece', ({ roomId, x, y }) => {
         const room = clientRooms[roomId];
-        if (!room || !room.gameState.p2) return;
+        if (!room || !room.gameState.p2) return; 
+
         const state = room.gameState;
         if (state.turn !== socket.id) return;
 
         const playerKey = state.p1.id === socket.id ? 'p1' : 'p2';
+        const opponentKey = playerKey === 'p1' ? 'p2' : 'p1';
         const me = state[playerKey];
-        const opponent = state[playerKey === 'p1' ? 'p2' : 'p1'];
+        const opponent = state[opponentKey];
 
+        // Вектор руху
         const dx = Math.abs(me.x - x);
         const dy = Math.abs(me.y - y);
-        const distance = dx + dy;
-        const isOccupied = (opponent.x === x && opponent.y === y);
+        const distance = dx + dy; // Манхеттенська відстань
 
-        if (distance !== 1) return;
-        if (isOccupied) return;
-        if (isPathBlocked(me.x, me.y, x, y, state.walls)) return;
+        let isValidMove = false;
 
+        // ВАРІАНТ 1: Звичайний хід (1 клітинка)
+        if (distance === 1) {
+            // Перевіряємо, чи не зайнято і чи немає стіни
+            const isOccupied = (opponent.x === x && opponent.y === y);
+            const isBlocked = isPathBlocked(me.x, me.y, x, y, state.walls);
+            
+            if (!isOccupied && !isBlocked) {
+                isValidMove = true;
+            }
+        } 
+        // ВАРІАНТ 2: Стрибок (2 клітинки по прямій)
+        else if (distance === 2 && (dx === 2 || dy === 2)) {
+            // Знаходимо клітинку "посередині" (де має стояти суперник)
+            const midX = (me.x + x) / 2;
+            const midY = (me.y + y) / 2;
+
+            // 1. Чи стоїть там суперник?
+            const hasOpponent = (opponent.x === midX && opponent.y === midY);
+            
+            // 2. Чи немає стіни між мною і суперником?
+            const wall1 = isPathBlocked(me.x, me.y, midX, midY, state.walls);
+            
+            // 3. Чи немає стіни за спиною суперника (куди стрибаємо)?
+            const wall2 = isPathBlocked(midX, midY, x, y, state.walls);
+
+            if (hasOpponent && !wall1 && !wall2) {
+                isValidMove = true;
+            }
+        }
+
+        if (!isValidMove) return; // Хід не пройшов перевірку
+
+        // Оновлюємо координати
         me.x = x;
         me.y = y;
 
-        // Перемога
-        if ((playerKey === 'p1' && me.y === 8) || (playerKey === 'p2' && me.y === 0)) {
+        // Перевірка перемоги
+        const p1Wins = playerKey === 'p1' && me.y === 8;
+        const p2Wins = playerKey === 'p2' && me.y === 0;
+
+        if (p1Wins || p2Wins) {
             io.to(roomId).emit('gameOver', { winnerId: me.id });
             io.to(roomId).emit('gameUpdate', state);
             return;
@@ -139,7 +175,7 @@ io.on('connection', (socket) => {
         state.turn = opponent.id;
         io.to(roomId).emit('gameUpdate', state);
     });
-
+    
     socket.on('placeWall', ({ roomId, x, y, orientation }) => {
         const room = clientRooms[roomId];
         if (!room || !room.gameState.p2) return;
