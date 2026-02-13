@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Board from './Board';
 import { User, Shield, Activity, RotateCw, Check, X, Trophy, Frown } from 'lucide-react';
 import clsx from 'clsx';
 import { getValidMoves } from '../gameRules';
+import { sounds } from '../sounds';
 
 export default function Game({ socket, roomId, myPlayerId, gameState }) {
     const [mode, setMode] = useState('move');
@@ -11,6 +12,10 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
     const [winnerId, setWinnerId] = useState(null);
     const [possibleMoves, setPossibleMoves] = useState([]);
 
+    // 1. Оголошуємо реф тут, зверху, щоб уникнути помилок
+    const prevGameState = useRef(null);
+
+    // Слухач події завершення гри
     useEffect(() => {
         socket.on('gameOver', ({ winnerId }) => {
             setWinnerId(winnerId);
@@ -19,9 +24,9 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
             socket.off('gameOver');
         };
     }, [socket]);
-    // --- НОВЕ: Розрахунок підсвітки ---
+
+    // Розрахунок підсвітки ходів
     useEffect(() => {
-        // Якщо не мій хід або гра закінчилась - очищаємо підсвітку
         if (!gameState || gameState.turn !== myPlayerId || winnerId) {
             setPossibleMoves([]);
             return;
@@ -30,21 +35,56 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
         const playerKey = gameState.p1.id === myPlayerId ? 'p1' : 'p2';
         const opponentKey = playerKey === 'p1' ? 'p2' : 'p1';
 
-        // Викликаємо функцію з нового файлу
         const moves = getValidMoves(gameState[playerKey], gameState[opponentKey], gameState.walls);
         setPossibleMoves(moves);
-
     }, [gameState, myPlayerId, winnerId]);
+
+    // Логіка звукових ефектів
+    useEffect(() => {
+        if (!gameState) return;
+
+        // Якщо це перше завантаження - просто зберігаємо стан і виходимо
+        if (!prevGameState.current) {
+            prevGameState.current = gameState;
+            return;
+        }
+
+        const prev = prevGameState.current;
+        const curr = gameState;
+
+        // 1. Перемога/Поразка
+        if (!prev.winnerId && winnerId) {
+            if (winnerId === myPlayerId) {
+                sounds.win();
+            } else {
+                sounds.lose();
+            }
+        }
+        // 2. Стінка поставлена (зменшилась кількість стінок)
+        else if ((prev.p1.walls !== curr.p1.walls) || (prev.p2 && prev.p2.walls !== curr.p2.walls)) {
+            sounds.wall();
+        }
+        // 3. Хід зроблено (змінилася черга, але стінки ті самі)
+        else if (prev.turn !== curr.turn) {
+            sounds.move();
+        }
+
+        // Оновлюємо реф
+        prevGameState.current = curr;
+    }, [gameState, winnerId, myPlayerId]);
 
     const handleCellClick = (x, y) => {
         if (winnerId) return;
         if (!gameState || gameState.turn !== myPlayerId) return;
 
         if (mode === 'move') {
-            socket.emit('movePiece', { roomId, x, y });
+            // Перевіряємо, чи хід валідний (для надійності)
+            const isValid = possibleMoves.some(m => m.x === x && m.y === y);
+            if (isValid) {
+                socket.emit('movePiece', { roomId, x, y });
+            }
         } else {
             if (x < 8 && y < 8) {
-                // При кліку просто ставимо стіну в поточній орієнтації
                 setPendingWall({ x, y, orientation: wallOrientation });
             }
         }
@@ -52,6 +92,7 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
 
     const confirmWall = () => {
         if (pendingWall) {
+            sounds.confirm(); // <--- Додав звук підтвердження
             socket.emit('placeWall', { roomId, x: pendingWall.x, y: pendingWall.y, orientation: pendingWall.orientation });
             setPendingWall(null);
             setMode('move');
@@ -66,7 +107,6 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
     const toggleOrientation = () => {
         const newOri = wallOrientation === 'H' ? 'V' : 'H';
         setWallOrientation(newOri);
-        // Якщо стінка вже стоїть (як привид), обертаємо її на місці
         if (pendingWall) {
             setPendingWall({ ...pendingWall, orientation: newOri });
         }
@@ -86,7 +126,7 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
     return (
         <div className="flex flex-col items-center min-h-screen bg-slate-900 p-2 sm:p-4 font-sans text-slate-100 relative">
 
-            {/* МОДАЛКА ПЕРЕМОГИ (Без змін) */}
+            {/* МОДАЛКА ПЕРЕМОГИ */}
             {winnerId && (
                 <div className="absolute inset-0 z-50 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
                     <div className="bg-slate-800 border border-slate-700 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center">
@@ -103,7 +143,7 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
                 </div>
             )}
 
-            {/* HEADER (Без змін) */}
+            {/* HEADER */}
             <div className="w-full max-w-lg mb-6 flex justify-between items-center bg-slate-800/50 p-3 rounded-xl border border-slate-700 backdrop-blur-sm">
                 <div className={`flex items-center gap-2 transition-opacity ${gameState.turn === player1.id ? 'opacity-100' : 'opacity-50'}`}>
                     <div className="w-8 h-8 rounded-lg bg-cyan-500 flex items-center justify-center text-black font-bold"><User size={18} /></div>
@@ -119,7 +159,7 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
                 </div>
             </div>
 
-            {/* BOARD (Без змін) */}
+            {/* BOARD */}
             <div className={clsx("relative w-full max-w-[90vw] aspect-square sm:max-w-[500px] transition-transform duration-700 mb-6", shouldRotateBoard && "rotate-180")}>
                 <Board
                     gameState={gameState}
@@ -133,16 +173,14 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
                 />
             </div>
 
-            {/* CONTROLS - ОНОВЛЕНО */}
-
+            {/* CONTROLS */}
             {mode === 'wall' && pendingWall ? (
-                // МЕНЮ ПІДТВЕРДЖЕННЯ (З кнопкою обертання)
+                // МЕНЮ ПІДТВЕРДЖЕННЯ
                 <div className="w-full max-w-lg flex gap-3 animate-fade-in-up">
                     <button onClick={cancelWall} className="flex-[1] bg-slate-700 hover:bg-slate-600 p-4 rounded-xl font-bold flex flex-col items-center justify-center text-slate-300">
                         <X size={24} />
                     </button>
 
-                    {/* КНОПКА ОБЕРТАННЯ ТЕПЕР ТУТ */}
                     <button onClick={toggleOrientation} className="flex-[2] bg-blue-600 hover:bg-blue-500 p-4 rounded-xl font-bold flex items-center justify-center gap-2 text-white shadow-lg active:rotate-180 transition-all">
                         <RotateCw size={24} className={clsx("transition-transform duration-300", wallOrientation === 'V' && "rotate-90")} />
                         <span>Обернути</span>
@@ -153,7 +191,7 @@ export default function Game({ socket, roomId, myPlayerId, gameState }) {
                     </button>
                 </div>
             ) : (
-                // ГОЛОВНЕ МЕНЮ (Тільки 2 кнопки: Рух і Стіна)
+                // ГОЛОВНЕ МЕНЮ
                 <div className="w-full max-w-lg grid grid-cols-2 gap-3">
                     <button onClick={() => setMode('move')} className={clsx("p-4 rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-1", mode === 'move' ? "bg-slate-600 text-white ring-2 ring-cyan-400" : "bg-slate-800 text-slate-400 hover:bg-slate-700")}>
                         <User size={24} /> <span className="text-xs uppercase">Рухатись</span>
